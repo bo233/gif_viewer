@@ -22,7 +22,10 @@ const infoEl = document.getElementById('info') as HTMLSpanElement;
 let frames: Frame[] = [];
 let current = 0;
 let playing = false;
-let speed = 1;
+// 初始倍速（可由扩展配置注入）
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore
+let speed = (window.__initialPlaybackSpeed && !isNaN(window.__initialPlaybackSpeed)) ? Number(window.__initialPlaybackSpeed) : 1;
 let rafHandle: number | null = null;
 let lastTimestamp = 0;
 let accumulated = 0; // ms
@@ -314,6 +317,12 @@ if(window.__initialGifBase64){
   decode(window.__initialGifBase64);
 } else {
   vscode?.postMessage({ type: 'requestBytes' });
+}
+
+// 同步下拉框显示初始倍速（若匹配某个 option）
+const matchInit = Array.from(speedSel.options).find(o=>Number(o.value)===speed);
+if(matchInit){
+  speedSel.value = String(speed);
 }
 
 // 大文件提示

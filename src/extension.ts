@@ -114,6 +114,11 @@ class GifCustomEditorProvider implements vscode.CustomReadonlyEditorProvider<Gif
   }
 
   private getHtml(webview: vscode.Webview, bytes: Uint8Array, large: boolean): string {
+    const config = vscode.workspace.getConfiguration('gifViewer');
+    let defaultSpeed = Number(config.get('defaultPlaybackSpeed', 1));
+    if(isNaN(defaultSpeed)) defaultSpeed = 1;
+    if(defaultSpeed < 0.1) defaultSpeed = 0.1;
+    if(defaultSpeed > 4) defaultSpeed = 4;
     const scriptUri = webview.asWebviewUri(vscode.Uri.file(path.join(this.context.extensionPath, 'media', 'main.js')));
     const nonce = getNonce();
     const base64 = Buffer.from(bytes).toString('base64');
@@ -162,6 +167,7 @@ select, input[type=range]{cursor:pointer;}
 const initialBase64='${base64}';
 window.__initialGifBase64 = initialBase64;
 window.__isLargeGif = ${large ? 'true' : 'false'};
+window.__initialPlaybackSpeed = ${defaultSpeed};
 </script>
 </body>
 </html>`;
