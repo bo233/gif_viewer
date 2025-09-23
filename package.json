@@ -1,0 +1,49 @@
+{
+  "name": "gif-viewer",
+  "displayName": "GIF Viewer",
+  "description": "在 VS Code 中预览与控制播放 GIF（逐帧、进度、倍速）",
+  "version": "0.0.1",
+  "publisher": "your-name",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onLanguage:gif",
+    "onFileSystem:*"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "customEditors": [
+      {
+        "viewType": "gifViewer.viewer",
+        "displayName": "GIF Viewer",
+        "selector": [
+          {
+            "filenamePattern": "*.gif"
+          }
+        ],
+        "priority": "default"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run build",
+    "build": "tsc -p . && npm run build-webview",
+    "watch": "tsc -w -p . & npm run build-webview -- --watch",
+    "build-webview": "node scripts/build-webview.js",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.30",
+    "@types/vscode": "^1.90.0",
+    "esbuild": "^0.21.5",
+    "typescript": "^5.4.0",
+    "vsce": "^2.15.0"
+  },
+  "dependencies": {
+    "gifuct-js": "^2.1.2"
+  }
+}

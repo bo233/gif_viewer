@@ -1,0 +1,6 @@
+dist/webview-src
+webview-src
+scripts
+node_modules/.bin
+.vscode-test
+**/*.map
