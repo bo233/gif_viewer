@@ -139,6 +139,10 @@ async function decode(base64: string){
       extra = ' ⚠大量帧, 性能可能下降';
     }
     setInfo(`${frames.length} 帧 / ${(totalDuration/1000).toFixed(2)}s${extra}`);
+    // 默认自动播放
+    if(!playing){
+      play();
+    }
   } catch (e){
     console.error(e);
     setInfo('解析失败');
