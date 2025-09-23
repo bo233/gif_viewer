@@ -28,6 +28,8 @@ let lastTimestamp = 0;
 let accumulated = 0; // ms
 let totalDuration = 0;
 const MAX_FRAMES_WARNING = 2000;
+let logicalW = 0;
+let logicalH = 0;
 
 function setInfo(text: string){
   infoEl.textContent = text;
@@ -53,8 +55,8 @@ async function decode(base64: string){
       return;
     }
     // 逻辑画布尺寸（GIF 全尺寸）
-    const logicalW = (gif as any).lsd?.width || rawFrames[0].dims.width;
-    const logicalH = (gif as any).lsd?.height || rawFrames[0].dims.height;
+  logicalW = (gif as any).lsd?.width || rawFrames[0].dims.width;
+  logicalH = (gif as any).lsd?.height || rawFrames[0].dims.height;
 
   // 全尺寸合成：逐帧叠加 patch，处理 disposalType 0/1/2/3
     const composed: Frame[] = [];
@@ -127,8 +129,9 @@ async function decode(base64: string){
     totalDuration = frames.reduce((a,f)=>a+f.delay,0);
     progress.max = String(frames.length - 1);
     // resize canvas
-    canvas.width = frames[0].imageData.width;
-    canvas.height = frames[0].imageData.height;
+  canvas.width = frames[0].imageData.width;
+  canvas.height = frames[0].imageData.height;
+  recalcScale();
     current = 0;
     drawFrame();
     let extra = '';
@@ -147,6 +150,25 @@ function drawFrame(){
   const fr = frames[current];
   ctx.putImageData(fr.imageData,0,0);
   progress.value = String(current);
+}
+
+function recalcScale(){
+  if(!logicalW || !logicalH) return;
+  const parent = canvas.parentElement as HTMLElement;
+  if(!parent) return;
+  const pw = parent.clientWidth;
+  const ph = parent.clientHeight;
+  if(pw<=0 || ph<=0) return;
+  const scale = Math.min(pw / logicalW, ph / logicalH);
+  const displayW = Math.max(1, Math.floor(logicalW * scale));
+  const displayH = Math.max(1, Math.floor(logicalH * scale));
+  canvas.style.width = displayW + 'px';
+  canvas.style.height = displayH + 'px';
+}
+
+const resizeObserver = new ResizeObserver(recalcScale);
+if(canvas.parentElement){
+  resizeObserver.observe(canvas.parentElement);
 }
 
 function stepPlay(timestamp: number){
