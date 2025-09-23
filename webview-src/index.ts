@@ -241,6 +241,71 @@ window.addEventListener('message', (event)=>{
   }
 });
 
+// 键盘快捷键：窗口聚焦时生效
+window.addEventListener('keydown', (e)=>{
+  // 避免在可编辑/输入元素中触发（当前无输入，但保留健壮性）
+  const tag = (e.target as HTMLElement)?.tagName;
+  if(tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || (e.target as HTMLElement)?.isContentEditable){
+    return;
+  }
+  if(e.code === 'Space'){
+    e.preventDefault();
+    playing ? pause() : play();
+  } else if(e.code === 'ArrowLeft'){
+    e.preventDefault();
+    pause();
+    if(frames.length){
+      current = (current - 1 + frames.length) % frames.length;
+      drawFrame();
+    }
+  } else if(e.code === 'ArrowRight'){
+    e.preventDefault();
+    pause();
+    if(frames.length){
+      current = (current + 1) % frames.length;
+      drawFrame();
+    }
+  } else if(e.code === 'ArrowUp'){
+    e.preventDefault();
+    // 预设速度列表（按下一个档位提升）
+    const opts = Array.from(speedSel.options).map(o=>Number(o.value)).sort((a,b)=>a-b);
+    const currentIdx = opts.findIndex(v=>v >= speed);
+    let target: number;
+    if(currentIdx === -1){
+      target = opts[0];
+    } else {
+      // 如果当前正好是某个档位，就取下一个；否则取当前Idx对应档位
+      if(opts[currentIdx] === speed){
+        target = opts[Math.min(opts.length-1, currentIdx+1)];
+      } else {
+        target = opts[currentIdx];
+      }
+    }
+    speed = target;
+    // 同步下拉选中（若存在对应值）
+    const match = Array.from(speedSel.options).find(o=>Number(o.value)===speed);
+    if(match) speedSel.value = String(speed);
+  } else if(e.code === 'ArrowDown'){
+    e.preventDefault();
+    const opts = Array.from(speedSel.options).map(o=>Number(o.value)).sort((a,b)=>a-b);
+    const currentIdx = opts.findIndex(v=>v >= speed);
+    let target: number;
+    if(currentIdx === -1){
+      target = opts[0];
+    } else {
+      if(opts[currentIdx] === speed){
+        target = opts[Math.max(0, currentIdx-1)];
+      } else {
+        // speed 介于两个档之间，降低到前一个档位
+        target = opts[Math.max(0, currentIdx-1)];
+      }
+    }
+    speed = target;
+    const match = Array.from(speedSel.options).find(o=>Number(o.value)===speed);
+    if(match) speedSel.value = String(speed);
+  }
+});
+
 // 初始加载
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore

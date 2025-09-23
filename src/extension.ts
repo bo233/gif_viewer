@@ -131,7 +131,7 @@ body{background:#1e1e1e;color:#ddd;font:13px/1.4 system-ui, sans-serif;display:f
 button{background:#3a3d41;color:#ddd;border:1px solid #555;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:12px;}
 button:hover{background:#45494e;}
 button:active{background:#2d2f33;}
-#canvasWrap{flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;background:repeating-conic-gradient(#2a2a2a 0% 25%,#262626 0% 50%) 50% /20px 20px;}
+#canvasWrap{flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;background:#1e1e1e;}
 canvas{max-width:100%;max-height:100%;width:auto;height:auto;}
 #progress{flex:1;}
 label{display:flex;align-items:center;gap:4px;}
