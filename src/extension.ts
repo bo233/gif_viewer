@@ -4,6 +4,9 @@ import * as fs from 'fs';
 import * as os from 'os';
 import { spawn } from 'child_process';
 
+// 记录最近激活的 GIF 自定义编辑器文档 URI（用于复制命令多标签场景判定）
+let lastActiveGifUri: vscode.Uri | undefined;
+
 export function activate(context: vscode.ExtensionContext) {
   const provider = new GifCustomEditorProvider(context);
   context.subscriptions.push(
@@ -20,16 +23,30 @@ export function activate(context: vscode.ExtensionContext) {
       return;
     }
     const active = vscode.window.activeTextEditor;
-    // 找一个当前已打开的 gif 自定义编辑器面板 URI
+    // 优先使用当前活动 Tab 中的 GIF
     let gifUri: vscode.Uri | undefined;
-    outer: for(const group of vscode.window.tabGroups.all){
-      for(const pane of group.tabs){
-        const anyInput: any = (pane as any).input;
-        if(anyInput && typeof anyInput === 'object' && 'uri' in anyInput){
-          const candidate = (anyInput as { uri?: vscode.Uri }).uri;
-          if(candidate && candidate.fsPath.toLowerCase().endsWith('.gif')){
-            gifUri = candidate;
-            break outer;
+    const activeGroup = vscode.window.tabGroups.activeTabGroup;
+    const activeTab: any = activeGroup?.activeTab;
+    if(activeTab && activeTab.input && typeof activeTab.input === 'object' && 'uri' in activeTab.input){
+      const u = (activeTab.input as { uri?: vscode.Uri }).uri;
+      if(u && u.fsPath.toLowerCase().endsWith('.gif')){
+        gifUri = u;
+      }
+    }
+    // 回退：使用记录的最后聚焦 GIF webview
+    if(!gifUri && lastActiveGifUri){
+      gifUri = lastActiveGifUri;
+    }
+    // 仍没有则扫描所有 tab (兜底一次)
+    if(!gifUri){
+      outer: for(const group of vscode.window.tabGroups.all){
+        for(const pane of group.tabs){
+          const anyInput: any = (pane as any).input;
+          if(anyInput && typeof anyInput === 'object' && 'uri' in anyInput){
+            const candidate = (anyInput as { uri?: vscode.Uri }).uri;
+            if(candidate && candidate.fsPath.toLowerCase().endsWith('.gif')){
+              gifUri = candidate; break outer;
+            }
           }
         }
       }
@@ -127,10 +144,21 @@ class GifCustomEditorProvider implements vscode.CustomReadonlyEditorProvider<Gif
       localResourceRoots: [vscode.Uri.file(path.join(this.context.extensionPath, 'media'))]
     };
 
-  const bytes = await document.getBytes();
-  const large = bytes.byteLength > 10 * 1024 * 1024; // 10MB
+    const bytes = await document.getBytes();
+    const large = bytes.byteLength > 10 * 1024 * 1024; // 10MB
+    webviewPanel.webview.html = this.getHtml(webviewPanel.webview, bytes, large);
 
-  webviewPanel.webview.html = this.getHtml(webviewPanel.webview, bytes, large);
+    // 记录当前激活 GIF（当面板可见/聚焦时）
+    webviewPanel.onDidChangeViewState(e => {
+      if(e.webviewPanel.active){
+        // 保存为最近活动 GIF
+        lastActiveGifUri = document.uri;
+      }
+    });
+    // 初次打开也记一次
+    if(webviewPanel.active){
+      lastActiveGifUri = document.uri;
+    }
 
     document.onDidChange(async (e: ReloadMessage) => {
       if (e.type === 'reloaded') {
