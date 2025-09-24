@@ -246,6 +246,42 @@ window.addEventListener('message', (event)=>{
       setInfo('复制失败');
       console.error(msg.message);
     }
+  } else if(msg.type === 'exportTemp'){
+    (async () => {
+      try {
+      const b64 = msg.data as string;
+      const name = msg.name as string || ('export-' + Date.now() + '.gif');
+      const bin = atob(b64);
+      const buf = new Uint8Array(bin.length);
+      for(let i=0;i<bin.length;i++) buf[i] = bin.charCodeAt(i);
+      const blob = new Blob([buf], { type: 'image/gif' });
+      // 优先尝试写入系统剪贴板 (客户端支持需 https / VS Code webview 环境通常允许 navigator.clipboard)
+      let clipboardOk = false;
+      if((navigator as any).clipboard && (window as any).ClipboardItem){
+        try {
+          const item = new (window as any).ClipboardItem({ 'image/gif': blob });
+          await (navigator as any).clipboard.write([item]);
+          setInfo('已复制 GIF 到剪贴板: ' + name);
+          clipboardOk = true;
+        } catch (ce){
+          console.warn('clipboard gif write failed, fallback download', ce);
+        }
+      }
+      if(!clipboardOk){
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = name;
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 2000);
+        setInfo('已下载 GIF (剪贴板写入不支持): ' + name);
+      }
+      } catch(e){
+        console.error('exportTemp failed', e);
+        setInfo('导出失败');
+      }
+    })();
   }
 });
 

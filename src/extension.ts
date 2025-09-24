@@ -26,7 +26,8 @@ interface ReloadMessage {
 
 interface WebviewOutMessageReload { type: 'reload'; data: string; }
 interface WebviewOutMessageCopyResult { type: 'copyResult'; ok: boolean; message: string; }
-type WebviewOutMessage = WebviewOutMessageReload | WebviewOutMessageCopyResult;
+interface WebviewOutMessageExportTemp { type: 'exportTemp'; name: string; data: string; }
+type WebviewOutMessage = WebviewOutMessageReload | WebviewOutMessageCopyResult | WebviewOutMessageExportTemp;
 
 interface WebviewInMessageRequestBytes { type: 'requestBytes'; }
 interface WebviewInMessageCopyGif { type: 'copyGif'; }
@@ -69,7 +70,8 @@ class GifDocument implements vscode.CustomDocument {
   }
 }
 
-class GifCustomEditorProvider implements vscode.CustomReadonlyEditorProvider<GifDocument> {
+class GifCustomEditorProvider implements vscode.
+CustomReadonlyEditorProvider<GifDocument> {
   constructor(private readonly context: vscode.ExtensionContext) {}
 
   async openCustomDocument(uri: vscode.Uri): Promise<GifDocument> {
@@ -84,7 +86,8 @@ class GifCustomEditorProvider implements vscode.CustomReadonlyEditorProvider<Gif
 
     const bytes = await document.getBytes();
     const large = bytes.byteLength > 10 * 1024 * 1024; // 10MB
-    webviewPanel.webview.html = this.getHtml(webviewPanel.webview, bytes, large);
+  const fileName = path.basename(document.uri.fsPath);
+  webviewPanel.webview.html = this.getHtml(webviewPanel.webview, bytes, large, fileName);
 
     // 记录当前激活 GIF（当面板可见/聚焦时）
     webviewPanel.onDidChangeViewState(e => {
@@ -126,6 +129,23 @@ class GifCustomEditorProvider implements vscode.CustomReadonlyEditorProvider<Gif
         case 'copyGif': {
           (async () => {
             const filePath = document.uri.fsPath;
+            const fileName = path.basename(filePath);
+            const isRemote = !!vscode.env.remoteName; // SSH / Codespaces / Container
+            // Remote 环境：无法直接使用本地文件路径意义较小，改为下发 base64 触发浏览器下载临时文件
+            if(isRemote){
+              try {
+                const bytes = await document.getBytes();
+                const b64 = Buffer.from(bytes).toString('base64');
+                const msg: WebviewOutMessageExportTemp = { type: 'exportTemp', name: fileName, data: b64 };
+                webviewPanel.webview.postMessage(msg);
+                // 仍尝试复制文件名到剪贴板作为提示
+                await vscode.env.clipboard.writeText(fileName);
+                vscode.window.showInformationMessage('远程 GIF 已传送到本地（自动下载），文件名已复制: ' + fileName);
+                return;
+              } catch(e:any){
+                vscode.window.showWarningMessage('远程导出失败，将尝试备用复制逻辑: ' + (e?.message || e));
+              }
+            }
             // macOS: 优先尝试 helper 写入系统剪贴板为真正 GIF 数据
             if(process.platform === 'darwin'){
               const helperPath = path.join(this.context.extensionPath, 'native', 'macos-gif-clipboard', 'gifclip');
@@ -169,7 +189,7 @@ class GifCustomEditorProvider implements vscode.CustomReadonlyEditorProvider<Gif
     });
   }
 
-  private getHtml(webview: vscode.Webview, bytes: Uint8Array, large: boolean): string {
+  private getHtml(webview: vscode.Webview, bytes: Uint8Array, large: boolean, fileName: string): string {
     const config = vscode.workspace.getConfiguration('gifViewer');
     let defaultSpeed = Number(config.get('defaultPlaybackSpeed', 1));
     if(isNaN(defaultSpeed)) defaultSpeed = 1;
@@ -177,7 +197,8 @@ class GifCustomEditorProvider implements vscode.CustomReadonlyEditorProvider<Gif
     if(defaultSpeed > 4) defaultSpeed = 4;
     const scriptUri = webview.asWebviewUri(vscode.Uri.file(path.join(this.context.extensionPath, 'media', 'main.js')));
     const nonce = getNonce();
-    const base64 = Buffer.from(bytes).toString('base64');
+  const base64 = Buffer.from(bytes).toString('base64');
+  // fileName 已通过参数传入
   return `<!DOCTYPE html>
 <html lang="zh-cn">
 <head>
@@ -224,6 +245,7 @@ const initialBase64='${base64}';
 window.__initialGifBase64 = initialBase64;
 window.__isLargeGif = ${large ? 'true' : 'false'};
 window.__initialPlaybackSpeed = ${defaultSpeed};
+window.__gifFileName = ${JSON.stringify(fileName)};
 </script>
 </body>
 </html>`;
