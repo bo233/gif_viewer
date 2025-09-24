@@ -241,6 +241,11 @@ window.addEventListener('message', (event)=>{
   const msg = event.data;
   if(msg.type === 'reload'){
     decode(msg.data);
+  } else if(msg.type === 'copyResult'){
+    if(!msg.ok){
+      setInfo('复制失败');
+      console.error(msg.message);
+    }
   }
 });
 
@@ -306,6 +311,9 @@ window.addEventListener('keydown', (e)=>{
     speed = target;
     const match = Array.from(speedSel.options).find(o=>Number(o.value)===speed);
     if(match) speedSel.value = String(speed);
+  } else if((e.metaKey || e.ctrlKey) && e.code === 'KeyC'){
+    // 复制 GIF 原始文件路径
+    vscode?.postMessage({ type: 'copyGif' });
   }
 });
 

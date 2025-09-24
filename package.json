@@ -12,7 +12,8 @@
   ],
   "activationEvents": [
     "onLanguage:gif",
-    "onFileSystem:*"
+    "onFileSystem:*",
+    "onCommand:gifViewer.copyGifClipboardMac"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -39,13 +40,21 @@
         ],
         "priority": "default"
       }
+    ],
+    "commands": [
+      {
+        "command": "gifViewer.copyGifClipboardMac",
+        "title": "GIF Viewer: 复制 GIF 到系统剪贴板 (macOS)",
+        "category": "GIF Viewer"
+      }
     ]
   },
   "scripts": {
     "vscode:prepublish": "npm run build",
-    "build": "tsc -p . && npm run build-webview",
+    "build": "tsc -p . && npm run build-webview && ( [ \"$(uname)\" = \"Darwin\" ] && npm run build:mac-clipboard || echo 'Skip mac helper (non-macOS)' )",
     "watch": "tsc -w -p . & npm run build-webview -- --watch",
     "build-webview": "node scripts/build-webview.js",
+    "build:mac-clipboard": "swiftc native/macos-gif-clipboard/main.swift -o native/macos-gif-clipboard/gifclip",
     "package": "vsce package"
   },
   "devDependencies": {
