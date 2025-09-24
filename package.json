@@ -12,8 +12,7 @@
   ],
   "activationEvents": [
     "onLanguage:gif",
-    "onFileSystem:*",
-    "onCommand:gifViewer.copyGifClipboardMac"
+    "onFileSystem:*"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -39,13 +38,6 @@
           }
         ],
         "priority": "default"
-      }
-    ],
-    "commands": [
-      {
-        "command": "gifViewer.copyGifClipboardMac",
-        "title": "GIF Viewer: 复制 GIF 到系统剪贴板 (macOS)",
-        "category": "GIF Viewer"
       }
     ]
   },

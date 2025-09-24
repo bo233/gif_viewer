@@ -15,68 +15,6 @@ export function activate(context: vscode.ExtensionContext) {
       supportsMultipleEditorsPerDocument: false
     })
   );
-
-  // macOS helper 命令：调用本地 Swift 构建的 gifclip 写入系统剪贴板
-  context.subscriptions.push(vscode.commands.registerCommand('gifViewer.copyGifClipboardMac', async () => {
-    if(os.platform() !== 'darwin'){
-      vscode.window.showWarningMessage('该命令仅在 macOS 上可用。');
-      return;
-    }
-    const active = vscode.window.activeTextEditor;
-    // 优先使用当前活动 Tab 中的 GIF
-    let gifUri: vscode.Uri | undefined;
-    const activeGroup = vscode.window.tabGroups.activeTabGroup;
-    const activeTab: any = activeGroup?.activeTab;
-    if(activeTab && activeTab.input && typeof activeTab.input === 'object' && 'uri' in activeTab.input){
-      const u = (activeTab.input as { uri?: vscode.Uri }).uri;
-      if(u && u.fsPath.toLowerCase().endsWith('.gif')){
-        gifUri = u;
-      }
-    }
-    // 回退：使用记录的最后聚焦 GIF webview
-    if(!gifUri && lastActiveGifUri){
-      gifUri = lastActiveGifUri;
-    }
-    // 仍没有则扫描所有 tab (兜底一次)
-    if(!gifUri){
-      outer: for(const group of vscode.window.tabGroups.all){
-        for(const pane of group.tabs){
-          const anyInput: any = (pane as any).input;
-          if(anyInput && typeof anyInput === 'object' && 'uri' in anyInput){
-            const candidate = (anyInput as { uri?: vscode.Uri }).uri;
-            if(candidate && candidate.fsPath.toLowerCase().endsWith('.gif')){
-              gifUri = candidate; break outer;
-            }
-          }
-        }
-      }
-    }
-    if(!gifUri){
-      vscode.window.showInformationMessage('未找到已打开的 GIF，请先打开一个 .gif 文件。');
-      return;
-    }
-    const helperPath = path.join(context.extensionPath, 'native', 'macos-gif-clipboard', 'gifclip');
-    if(!fs.existsSync(helperPath)){
-      vscode.window.showErrorMessage('未找到 helper 二进制：请先运行 npm run build:mac-clipboard 进行构建。');
-      return;
-    }
-    try {
-      const proc = spawn(helperPath, [gifUri.fsPath], { stdio: ['ignore','pipe','pipe'] });
-      let stderr = '';
-      let stdout = '';
-      proc.stdout.on('data', d=> stdout += d.toString());
-      proc.stderr.on('data', d=> stderr += d.toString());
-      proc.on('close', code => {
-        if(code === 0){
-          vscode.window.showInformationMessage('GIF 已写入系统剪贴板: ' + gifUri!.fsPath);
-        } else {
-          vscode.window.showErrorMessage('写入失败 (code '+code+'): ' + (stderr.trim() || stdout.trim()));
-        }
-      });
-    } catch(err: any){
-      vscode.window.showErrorMessage('执行 helper 失败: ' + (err?.message || String(err)));
-    }
-  }));
 }
 
 export function deactivate() {}
@@ -187,17 +125,42 @@ class GifCustomEditorProvider implements vscode.CustomReadonlyEditorProvider<Gif
         }
         case 'copyGif': {
           (async () => {
+            const filePath = document.uri.fsPath;
+            // macOS: 优先尝试 helper 写入系统剪贴板为真正 GIF 数据
+            if(process.platform === 'darwin'){
+              const helperPath = path.join(this.context.extensionPath, 'native', 'macos-gif-clipboard', 'gifclip');
+              if(fs.existsSync(helperPath)){
+                try {
+                  await new Promise<void>((resolve, reject) => {
+                    const proc = spawn(helperPath, [filePath], { stdio: ['ignore','pipe','pipe'] });
+                    let stderr=''; let stdout='';
+                    proc.stdout.on('data', d=> stdout += d.toString());
+                    proc.stderr.on('data', d=> stderr += d.toString());
+                    proc.on('error', reject);
+                    proc.on('close', code => {
+                      if(code===0) resolve(); else reject(new Error(stderr.trim() || stdout.trim() || ('code '+code)));
+                    });
+                  });
+                  vscode.window.showInformationMessage('GIF 已复制到系统剪贴板 (macOS 图像数据): ' + filePath);
+                  webviewPanel.webview.postMessage({ type: 'copyResult', ok: true, message: '' });
+                  return;
+                } catch(e:any){
+                  // 回退到路径复制
+                  vscode.window.showWarningMessage('直接写入 GIF 剪贴板失败，已回退为复制路径: ' + (e?.message || e));
+                }
+              } else {
+                // 无 helper -> 回退
+                vscode.window.showWarningMessage('未找到 gifclip，已改为复制文件路径。');
+              }
+            }
+            // 非 macOS 或 helper 不可用 / 失败：复制路径
             try {
-              // 复制文件绝对路径到剪贴板（VS Code 暂不支持直接写入二进制 GIF 数据）
-              const filePath = document.uri.fsPath;
               await vscode.env.clipboard.writeText(filePath);
               vscode.window.showInformationMessage('GIF 路径已复制: ' + filePath);
-              const resp: WebviewOutMessageCopyResult = { type: 'copyResult', ok: true, message: '' };
-              webviewPanel.webview.postMessage(resp);
-            } catch (err: any) {
+              webviewPanel.webview.postMessage({ type: 'copyResult', ok: true, message: '' });
+            } catch(err:any){
               vscode.window.showErrorMessage('复制 GIF 路径失败: ' + (err?.message || String(err)));
-              const resp: WebviewOutMessageCopyResult = { type: 'copyResult', ok: false, message: '复制失败: ' + (err?.message || err) };
-              webviewPanel.webview.postMessage(resp);
+              webviewPanel.webview.postMessage({ type: 'copyResult', ok: false, message: '复制失败: ' + (err?.message || err) });
             }
           })();
           break;
