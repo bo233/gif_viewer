@@ -71,6 +71,7 @@ async function decode(base64: string){
     if(!rawFrames.length){
       setInfo('无有效帧');
       frames = [];
+      if(frameCounterEl){ frameCounterEl.textContent = '-- / --'; }
       return;
     }
     // 逻辑画布尺寸（GIF 全尺寸）
@@ -175,6 +176,7 @@ function drawFrame(){
   const fr = frames[current];
   ctx.putImageData(fr.imageData,0,0);
   progress.value = String(current);
+  if(frameCounterEl){ frameCounterEl.textContent = `${current+1} / ${frames.length}`; }
 }
 
 function recalcScale(){
@@ -338,6 +340,7 @@ if(window.__initialGifBase64){
 } else {
   showLoading('Loading...');
   vscode?.postMessage({ type: 'requestBytes' });
+  if(frameCounterEl){ frameCounterEl.textContent = '-- / --'; }
 }
 
 // 同步下拉框显示初始倍速（若匹配某个 option）
