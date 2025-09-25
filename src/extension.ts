@@ -26,7 +26,8 @@ interface ReloadMessage {
 
 interface WebviewOutMessageReload { type: 'reload'; data: string; }
 interface WebviewOutMessageCopyResult { type: 'copyResult'; ok: boolean; message: string; }
-type WebviewOutMessage = WebviewOutMessageReload | WebviewOutMessageCopyResult;
+interface WebviewOutMessageExportTemp { type: 'exportTemp'; name: string; data: string; }
+type WebviewOutMessage = WebviewOutMessageReload | WebviewOutMessageCopyResult | WebviewOutMessageExportTemp;
 
 interface WebviewInMessageRequestBytes { type: 'requestBytes'; }
 interface WebviewInMessageCopyGif { type: 'copyGif'; }
@@ -126,7 +127,20 @@ class GifCustomEditorProvider implements vscode.CustomReadonlyEditorProvider<Gif
         case 'copyGif': {
           (async () => {
             const filePath = document.uri.fsPath;
-            // macOS: 优先尝试 helper 写入系统剪贴板为真正 GIF 数据
+            const fileName = path.basename(filePath);
+            // Remote 场景：发送 base64 给 webview 做本地剪贴板 (image/gif) 尝试
+            if (vscode.env.remoteName) {
+              try {
+                const bytes = await document.getBytes();
+                const base64 = Buffer.from(bytes).toString('base64');
+                webviewPanel.webview.postMessage({ type: 'exportTemp', name: fileName, data: base64 } satisfies WebviewOutMessageExportTemp);
+                vscode.window.showInformationMessage('已发送 GIF 数据到本地视图，正在尝试写入本地剪贴板: ' + fileName);
+                return;
+              } catch (e:any) {
+                vscode.window.showWarningMessage('远程读取 GIF 失败，回退为路径复制: ' + (e?.message||e));
+              }
+            }
+            // 本地 macOS: 优先 helper
             if(process.platform === 'darwin'){
               const helperPath = path.join(this.context.extensionPath, 'native', 'macos-gif-clipboard', 'gifclip');
               if(fs.existsSync(helperPath)){
@@ -145,15 +159,11 @@ class GifCustomEditorProvider implements vscode.CustomReadonlyEditorProvider<Gif
                   webviewPanel.webview.postMessage({ type: 'copyResult', ok: true, message: '' });
                   return;
                 } catch(e:any){
-                  // 回退到路径复制
                   vscode.window.showWarningMessage('直接写入 GIF 剪贴板失败，已回退为复制路径: ' + (e?.message || e));
                 }
-              } else {
-                // 无 helper -> 回退
-                vscode.window.showWarningMessage('未找到 gifclip，已改为复制文件路径。');
               }
             }
-            // 非 macOS 或 helper 不可用 / 失败：复制路径
+            // 路径复制回退
             try {
               await vscode.env.clipboard.writeText(filePath);
               vscode.window.showInformationMessage('GIF 路径已复制: ' + filePath);
@@ -214,14 +224,13 @@ canvas{
 #loadingOverlay{position:absolute;inset:0;display:flex;flex-direction:row;align-items:center;justify-content:center;gap:10px;background:var(--vscode-editor-background);font-size:12px;z-index:10;}
 .spinner{width:18px;height:18px;border:3px solid var(--vscode-progressBar-background, var(--vscode-focusBorder,#0078d4));border-top-color:transparent;border-radius:50%;animation:spin 0.9s linear infinite;}
 @keyframes spin{to{transform:rotate(360deg);}}
-#toolbar{
-  display:flex;
-  gap:8px;
-  align-items:center;
-  padding:6px 10px;
-  background:var(--vscode-sideBar-background, var(--vscode-editor-background));
-  border-top:1px solid var(--vscode-editorGroup-border, var(--vscode-panel-border, rgba(128,128,128,.25)));
-}
+#toolbar{display:flex;flex-direction:column;gap:10px;background:var(--vscode-sideBar-background, var(--vscode-editor-background));border-top:1px solid var(--vscode-editorGroup-border, var(--vscode-panel-border, rgba(128,128,128,.25)));padding:10px 0 12px;}
+#toolbarRow1{display:flex;flex-direction:column;align-items:center;gap:6px;padding:4px 18px 0;}
+#toolbarRow1 #progress{width:clamp(240px,70%,1100px);margin:0;}
+#frameCounter{font-size:11px;opacity:.8;font-variant-numeric:tabular-nums;}
+#toolbarRow2{position:relative;display:flex;justify-content:center;align-items:center;gap:14px;padding:0 18px 2px;}
+#btnGroup{display:flex;gap:10px;align-items:center;}
+#rightGroup{position:absolute;right:18px;display:flex;align-items:center;gap:14px;max-width:55%;}
 button{
   background:var(--vscode-button-secondaryBackground, var(--vscode-button-background,#3a3d41));
   color:var(--vscode-button-foreground, var(--vscode-foreground));
@@ -248,12 +257,7 @@ button:focus-visible{
   outline:1px solid var(--vscode-focusBorder);
   outline-offset:1px;
 }
-#progress{
-  flex:1;
-  margin:0 4px;
-  height:4px;
-  background:transparent;
-}
+#progress{height:4px;background:transparent;}
 input[type=range]{
   -webkit-appearance:none;
   width:100%;
@@ -301,15 +305,7 @@ select:focus{
   outline:1px solid var(--vscode-focusBorder);
   outline-offset:0;
 }
-#info{
-  margin-left:auto;
-  font-size:11px;
-  opacity:.75;
-  white-space:nowrap;
-  max-width:30%;
-  overflow:hidden;
-  text-overflow:ellipsis;
-}
+#info{margin-left:0;font-size:11px;opacity:.8;white-space:nowrap;}
 @media (max-width:640px){
   #info{display:none;}
 }
@@ -327,20 +323,29 @@ select, input[type=range]{cursor:pointer;}
 <body>
 <div id="canvasWrap"><div id="loadingOverlay"><div class="spinner"></div><span class="loading-text">Loading...</span></div><canvas id="canvas"></canvas></div>
 <div id="toolbar">
-  <button id="prev">⟨⟨</button>
-  <button id="play">▶</button>
-  <button id="next">⟩⟩</button>
-  <input id="progress" type="range" min="0" max="0" value="0" />
-  <label>速度<select id="speed">
-    <option value="0.25">0.25x</option>
-    <option value="0.5">0.5x</option>
-    <option value="1" selected>1x</option>
-    <option value="1.5">1.5x</option>
-    <option value="2">2x</option>
-    <option value="3">3x</option>
-    <option value="4">4x</option>
-  </select></label>
-  <span id="info"></span>
+  <div id="toolbarRow1">
+    <input id="progress" type="range" min="0" max="0" value="0" />
+    <div id="frameCounter">-- / --</div>
+  </div>
+  <div id="toolbarRow2">
+    <div id="btnGroup">
+      <button id="prev">⟨⟨</button>
+      <button id="play">▶</button>
+      <button id="next">⟩⟩</button>
+    </div>
+    <div id="rightGroup">
+      <label>速度<select id="speed">
+        <option value="0.25">0.25x</option>
+        <option value="0.5">0.5x</option>
+        <option value="1" selected>1x</option>
+        <option value="1.5">1.5x</option>
+        <option value="2">2x</option>
+        <option value="3">3x</option>
+        <option value="4">4x</option>
+      </select></label>
+      <span id="info"></span>
+    </div>
+  </div>
 </div>
 <script nonce="${nonce}" src="${scriptUri}"></script>
 <script nonce="${nonce}">

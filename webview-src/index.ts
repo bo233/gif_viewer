@@ -19,6 +19,7 @@ const progress = document.getElementById('progress') as HTMLInputElement;
 const speedSel = document.getElementById('speed') as HTMLSelectElement;
 const infoEl = document.getElementById('info') as HTMLSpanElement;
 const loadingOverlay = document.getElementById('loadingOverlay') as HTMLDivElement | null;
+const frameCounterEl = document.getElementById('frameCounter') as HTMLDivElement | null;
 
 function showLoading(text = '加载中...') {
   if(loadingOverlay){
@@ -71,6 +72,7 @@ async function decode(base64: string){
     if(!rawFrames.length){
       setInfo('无有效帧');
       frames = [];
+      if(frameCounterEl) frameCounterEl.textContent = '-- / --';
       return;
     }
     // 逻辑画布尺寸（GIF 全尺寸）
@@ -162,11 +164,13 @@ async function decode(base64: string){
     if(!playing){
       play();
     }
+    if(frameCounterEl) frameCounterEl.textContent = `1 / ${frames.length}`;
     hideLoading();
   } catch (e){
     console.error(e);
     setInfo('解析失败');
     showLoading('解析失败');
+    if(frameCounterEl) frameCounterEl.textContent = '-- / --';
   }
 }
 
@@ -175,6 +179,7 @@ function drawFrame(){
   const fr = frames[current];
   ctx.putImageData(fr.imageData,0,0);
   progress.value = String(current);
+  if(frameCounterEl) frameCounterEl.textContent = `${current+1} / ${frames.length}`;
 }
 
 function recalcScale(){
@@ -258,6 +263,39 @@ window.addEventListener('message', (event)=>{
       setInfo('复制失败');
       console.error(msg.message);
     }
+  } else if(msg.type === 'exportTemp') {
+    // 远程：接收 base64 尝试写入剪贴板（image/gif），失败则下载
+    (async () => {
+      try {
+        const bin = atob(msg.data);
+        const len = bin.length;
+        const bytes = new Uint8Array(len);
+        for(let i=0;i<len;i++) bytes[i] = bin.charCodeAt(i);
+        const blob = new Blob([bytes], { type: 'image/gif' });
+        if(navigator.clipboard && (window as any).ClipboardItem){
+          try {
+            // @ts-ignore
+            await navigator.clipboard.write([new ClipboardItem({ 'image/gif': blob })]);
+            setInfo((infoEl.textContent ? infoEl.textContent + ' ' : '') + '已复制图像');
+            return;
+          } catch(err){
+            console.warn('clipboard image write failed, fallback to download', err);
+          }
+        }
+        // 下载回退
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = msg.name || 'image.gif';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(()=>URL.revokeObjectURL(a.href), 2000);
+        setInfo((infoEl.textContent ? infoEl.textContent + ' ' : '') + '已下载');
+      } catch(err){
+        console.error('exportTemp handling failed', err);
+        setInfo('导出失败');
+      }
+    })();
   }
 });
 
@@ -338,6 +376,7 @@ if(window.__initialGifBase64){
 } else {
   showLoading('Loading...');
   vscode?.postMessage({ type: 'requestBytes' });
+  if(frameCounterEl) frameCounterEl.textContent = '-- / --';
 }
 
 // 同步下拉框显示初始倍速（若匹配某个 option）
