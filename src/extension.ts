@@ -186,21 +186,146 @@ class GifCustomEditorProvider implements vscode.CustomReadonlyEditorProvider<Gif
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>GIF Viewer</title>
 <style>
+:root{color-scheme:light dark;}
 html,body{padding:0;margin:0;height:100%;}
-body{background:#1e1e1e;color:#ddd;font:13px/1.4 system-ui, sans-serif;display:flex;flex-direction:column;}
-#toolbar{display:flex;gap:8px;align-items:center;padding:6px 10px;background:#252526;border-bottom:1px solid #333;}
-button{background:#3a3d41;color:#ddd;border:1px solid #555;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:12px;}
-button:hover{background:#45494e;}
-button:active{background:#2d2f33;}
-#canvasWrap{flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;background:#1e1e1e;}
-canvas{max-width:100%;max-height:100%;width:auto;height:auto;}
-#progress{flex:1;}
-label{display:flex;align-items:center;gap:4px;}
-#info{margin-left:auto;font-size:11px;opacity:.7;}
+body{
+  background:var(--vscode-editor-background);
+  color:var(--vscode-foreground);
+  font:12px/1.4 var(--vscode-font-family, system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Oxygen,Ubuntu,Cantarell,sans-serif);
+  display:flex;
+  flex-direction:column;
+  -webkit-font-smoothing:antialiased;
+}
+#canvasWrap{
+  flex:1;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  overflow:hidden;
+  background:var(--vscode-editor-background);
+  position:relative;
+}
+canvas{
+  max-width:100%;
+  max-height:100%;
+  width:auto;
+  height:auto;
+}
+#loadingOverlay{position:absolute;inset:0;display:flex;flex-direction:row;align-items:center;justify-content:center;gap:10px;background:var(--vscode-editor-background);font-size:12px;z-index:10;}
+.spinner{width:18px;height:18px;border:3px solid var(--vscode-progressBar-background, var(--vscode-focusBorder,#0078d4));border-top-color:transparent;border-radius:50%;animation:spin 0.9s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+#toolbar{
+  display:flex;
+  gap:8px;
+  align-items:center;
+  padding:6px 10px;
+  background:var(--vscode-sideBar-background, var(--vscode-editor-background));
+  border-top:1px solid var(--vscode-editorGroup-border, var(--vscode-panel-border, rgba(128,128,128,.25)));
+}
+button{
+  background:var(--vscode-button-secondaryBackground, var(--vscode-button-background,#3a3d41));
+  color:var(--vscode-button-foreground, var(--vscode-foreground));
+  border:1px solid var(--vscode-button-border, var(--vscode-editorWidget-border, rgba(128,128,128,.35)));
+  padding:4px 10px;
+  border-radius:4px;
+  cursor:pointer;
+  font-size:12px;
+  line-height:1;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:4px;
+  transition:background .12s, transform .1s;
+}
+button:hover{
+  background:var(--vscode-button-secondaryHoverBackground, var(--vscode-button-hoverBackground,#45494e));
+}
+button:active{
+  background:var(--vscode-button-background,#2d2f33);
+  transform:translateY(1px);
+}
+button:focus-visible{
+  outline:1px solid var(--vscode-focusBorder);
+  outline-offset:1px;
+}
+#progress{
+  flex:1;
+  margin:0 4px;
+  height:4px;
+  background:transparent;
+}
+input[type=range]{
+  -webkit-appearance:none;
+  width:100%;
+  background:transparent;
+  accent-color:var(--vscode-progressBar-background, var(--vscode-focusBorder,#0078d4));
+  cursor:pointer;
+}
+input[type=range]:focus{outline:none;}
+input[type=range]::-webkit-slider-runnable-track{
+  height:4px;
+  background:var(--vscode-scrollbarSlider-background, rgba(127,127,127,.3));
+  border-radius:999px;
+}
+input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none;
+  width:14px;
+  height:14px;
+  border-radius:50%;
+  margin-top:-5px;
+  background:var(--vscode-progressBar-background, var(--vscode-focusBorder,#0078d4));
+  border:1px solid var(--vscode-editorWidget-border, rgba(0,0,0,.4));
+  box-shadow:0 1px 2px rgba(0,0,0,.4);
+  cursor:pointer;
+  transition:transform .1s, background .15s;
+}
+input[type=range]:active::-webkit-slider-thumb{
+  transform:scale(.9);
+}
+label{
+  display:flex;
+  align-items:center;
+  gap:4px;
+  font-size:12px;
+  color:var(--vscode-foreground);
+}
+select{
+  background:var(--vscode-dropdown-background, var(--vscode-input-background,#1e1e1e));
+  color:var(--vscode-dropdown-foreground, var(--vscode-foreground));
+  border:1px solid var(--vscode-dropdown-border, var(--vscode-input-border, var(--vscode-editorWidget-border, rgba(128,128,128,.35))));
+  border-radius:4px;
+  padding:2px 4px;
+  font-size:12px;
+}
+select:focus{
+  outline:1px solid var(--vscode-focusBorder);
+  outline-offset:0;
+}
+#info{
+  margin-left:auto;
+  font-size:11px;
+  opacity:.75;
+  white-space:nowrap;
+  max-width:30%;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+@media (max-width:640px){
+  #info{display:none;}
+}
 select, input[type=range]{cursor:pointer;}
+/* 固定播放/暂停按钮宽度，防止 ▶ 与 ⏸ 字符宽度差导致跳动 */
+#play{
+  width:40px;
+  padding-left:0;
+  padding-right:0;
+  display:inline-flex;
+  justify-content:center;
+}
 </style>
 </head>
 <body>
+<div id="canvasWrap"><div id="loadingOverlay"><div class="spinner"></div><span class="loading-text">Loading...</span></div><canvas id="canvas"></canvas></div>
 <div id="toolbar">
   <button id="prev">⟨⟨</button>
   <button id="play">▶</button>
@@ -217,7 +342,6 @@ select, input[type=range]{cursor:pointer;}
   </select></label>
   <span id="info"></span>
 </div>
-<div id="canvasWrap"><canvas id="canvas"></canvas></div>
 <script nonce="${nonce}" src="${scriptUri}"></script>
 <script nonce="${nonce}">
 const initialBase64='${base64}';

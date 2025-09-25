@@ -18,6 +18,21 @@ const nextBtn = document.getElementById('next') as HTMLButtonElement;
 const progress = document.getElementById('progress') as HTMLInputElement;
 const speedSel = document.getElementById('speed') as HTMLSelectElement;
 const infoEl = document.getElementById('info') as HTMLSpanElement;
+const loadingOverlay = document.getElementById('loadingOverlay') as HTMLDivElement | null;
+
+function showLoading(text = '加载中...') {
+  if(loadingOverlay){
+    const span = loadingOverlay.querySelector('.loading-text');
+    if(span){ span.textContent = text; }
+    loadingOverlay.style.display = 'flex';
+  }
+}
+function hideLoading(){
+  if(loadingOverlay){
+    loadingOverlay.style.display = 'none';
+  }
+}
+
 
 let frames: Frame[] = [];
 let current = 0;
@@ -48,6 +63,7 @@ function arrayBufferFromBase64(b64: string): ArrayBuffer {
 
 async function decode(base64: string){
   try {
+    showLoading('解析中...');
     setInfo('解析中...');
     const ab = arrayBufferFromBase64(base64);
     const gif = parseGIF(ab);
@@ -134,7 +150,7 @@ async function decode(base64: string){
     // resize canvas
   canvas.width = frames[0].imageData.width;
   canvas.height = frames[0].imageData.height;
-  recalcScale();
+  // 不再缩放，保持原始尺寸显示
     current = 0;
     drawFrame();
     let extra = '';
@@ -146,9 +162,11 @@ async function decode(base64: string){
     if(!playing){
       play();
     }
+    hideLoading();
   } catch (e){
     console.error(e);
     setInfo('解析失败');
+    showLoading('解析失败');
   }
 }
 
@@ -160,23 +178,17 @@ function drawFrame(){
 }
 
 function recalcScale(){
-  if(!logicalW || !logicalH) return;
-  const parent = canvas.parentElement as HTMLElement;
-  if(!parent) return;
-  const pw = parent.clientWidth;
-  const ph = parent.clientHeight;
-  if(pw<=0 || ph<=0) return;
-  const scale = Math.min(pw / logicalW, ph / logicalH);
-  const displayW = Math.max(1, Math.floor(logicalW * scale));
-  const displayH = Math.max(1, Math.floor(logicalH * scale));
-  canvas.style.width = displayW + 'px';
-  canvas.style.height = displayH + 'px';
+  // 保持原始 GIF 尺寸，不做缩放
+  canvas.style.width = '';
+  canvas.style.height = '';
 }
 
+/* 取消自适应缩放观察，保持原始尺寸
 const resizeObserver = new ResizeObserver(recalcScale);
 if(canvas.parentElement){
   resizeObserver.observe(canvas.parentElement);
 }
+*/
 
 function stepPlay(timestamp: number){
   if(!playing) return;
@@ -324,6 +336,7 @@ if(window.__initialGifBase64){
   // @ts-ignore
   decode(window.__initialGifBase64);
 } else {
+  showLoading('Loading...');
   vscode?.postMessage({ type: 'requestBytes' });
 }
 
